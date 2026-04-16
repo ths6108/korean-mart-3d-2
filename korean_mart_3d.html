@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Korean Mart 3D - 216.5 m²</title>
+<style>
+  body {
+    margin: 0;
+    padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #F5F7FA;
+    color: #2C2C2A;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 500;
+    margin: 0 0 8px 0;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: #5F5E5A;
+    margin: 0 0 20px 0;
+  }
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .controls label {
+    font-size: 13px;
+    color: #5F5E5A;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 220px;
+    background: white;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 0.5px solid rgba(0,0,0,0.1);
+  }
+  .controls input[type="range"] {
+    flex: 1;
+  }
+  .val {
+    font-weight: 500;
+    color: #185FA5;
+    min-width: 36px;
+    text-align: right;
+  }
+  #stage {
+    width: 100%;
+    max-width: 1000px;
+    height: 640px;
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    border: 0.5px solid rgba(0,0,0,0.1);
+  }
+  #stage-3d {
+    position: absolute;
+    inset: 0;
+    perspective: 2000px;
+  }
+  #scene {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    transform-style: preserve-3d;
+    transition: transform 0.15s ease;
+  }
+  #labelLayer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .info {
+    position: absolute;
+    bottom: 12px;
+    left: 14px;
+    font-size: 11px;
+    color: #888780;
+  }
+  .preset-btns {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .preset-btns button {
+    font-size: 12px;
+    padding: 6px 12px;
+    background: white;
+    border: 0.5px solid rgba(0,0,0,0.15);
+    border-radius: 6px;
+    cursor: pointer;
+    color: #2C2C2A;
+  }
+  .preset-btns button:hover {
+    background: #F1EFE8;
+  }
+</style>
+</head>
+<body>
+
+<h1>Korean Mart — không gian 216.5 m²</h1>
+<p class="subtitle">8.5 m × 25.5 m × 3.2 m (H) · gạch sàn 0.6 m × 0.6 m</p>
+
+<div class="controls">
+  <label>
+    Xoay (좌우)
+    <input type="range" id="rotZ" min="-180" max="180" value="-25" step="1">
+    <span class="val" id="rotZVal">-25°</span>
+  </label>
+  <label>
+    Nghiêng (기울기)
+    <input type="range" id="rotX" min="0" max="90" value="55" step="1">
+    <span class="val" id="rotXVal">55°</span>
+  </label>
+</div>
+
+<div class="preset-btns">
+  <button onclick="setView(-25,55)">기본 대각선</button>
+  <button onclick="setView(0,90)">정면 (Front)</button>
+  <button onclick="setView(-90,90)">측면 (Side)</button>
+  <button onclick="setView(0,0)">위에서 (Top)</button>
+  <button onclick="setView(-45,45)">아이소메트릭</button>
+</div>
+
+<div id="stage" style="margin-top: 16px;">
+  <div id="stage-3d">
+    <div id="scene"></div>
+  </div>
+  <svg id="labelLayer" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div class="info">216.5 m² · 8.5m × 25.5m × 3.2m</div>
+</div>
+
+<script>
+(function() {
+  const stage = document.getElementById('stage');
+  const scene = document.getElementById('scene');
+  const labelLayer = document.getElementById('labelLayer');
+  const rotZ = document.getElementById('rotZ');
+  const rotX = document.getElementById('rotX');
+  const rotZVal = document.getElementById('rotZVal');
+  const rotXVal = document.getElementById('rotXVal');
+
+  const SCALE = 15;
+  const W = 8.5 * SCALE;
+  const D = 25.5 * SCALE;
+  const H = 3.2 * SCALE;
+
+  const ox = -W/2;
+  const oy = -D/2;
+
+  // FLOOR with tile pattern
+  const floor = document.createElement('div');
+  floor.style.position = 'absolute';
+  floor.style.width = W + 'px';
+  floor.style.height = D + 'px';
+  floor.style.left = ox + 'px';
+  floor.style.top = oy + 'px';
+  floor.style.background = '#B5D4F4';
+  floor.style.border = '1.5px solid #185FA5';
+  floor.style.boxSizing = 'border-box';
+  const tilePx = 0.6 * SCALE;
+  floor.style.backgroundImage =
+    'repeating-linear-gradient(0deg, rgba(55,138,221,0.45) 0 0.5px, transparent 0.5px ' + tilePx + 'px),' +
+    'repeating-linear-gradient(90deg, rgba(55,138,221,0.45) 0 0.5px, transparent 0.5px ' + tilePx + 'px)';
+  floor.style.transform = 'translateZ(0)';
+  scene.appendChild(floor);
+
+  // EDGES
+  function edge(x1, y1, z1, x2, y2, z2) {
+    const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
+    const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    const el = document.createElement('div');
+    el.style.position = 'absolute';
+    el.style.left = (ox + x1) + 'px';
+    el.style.top = (oy + y1) + 'px';
+    el.style.width = len + 'px';
+    el.style.height = '1.5px';
+    el.style.background = '#185FA5';
+    el.style.transformOrigin = '0 50%';
+    if (dx !== 0 && dy === 0 && dz === 0) {
+      el.style.transform = 'translateZ(' + z1 + 'px)';
+    } else if (dx === 0 && dy !== 0 && dz === 0) {
+      el.style.transform = 'translateZ(' + z1 + 'px) rotateZ(90deg)';
+    } else if (dx === 0 && dy === 0 && dz !== 0) {
+      el.style.transform = 'translateZ(' + z1 + 'px) rotateY(-90deg)';
+    }
+    scene.appendChild(el);
+  }
+
+  // 12 edges of the box
+  edge(0,0,0, W,0,0);
+  edge(W,0,0, W,D,0);
+  edge(0,D,0, W,D,0);
+  edge(0,0,0, 0,D,0);
+  edge(0,0,H, W,0,H);
+  edge(W,0,H, W,D,H);
+  edge(0,D,H, W,D,H);
+  edge(0,0,H, 0,D,H);
+  edge(0,0,0, 0,0,H);
+  edge(W,0,0, W,0,H);
+  edge(W,D,0, W,D,H);
+  edge(0,D,0, 0,D,H);
+
+  // LABELS (2D overlay anchored to 3D points)
+  const labels = [
+    { text: 'Rộng: 8.5 m',           x: W/2,    y: D + 22, z: 0,    size: 14 },
+    { text: 'Dài: 25.5 m',           x: W + 55, y: D/2,    z: 0,    size: 14 },
+    { text: 'Cao: 3.2 m',            x: -35,    y: -18,    z: H/2,  size: 14 },
+    { text: 'Diện tích: 216.5 m²',   x: W/2,    y: D/2,    z: 1,    size: 16 }
+  ];
+
+  labels.forEach(function(lb, i) {
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t.setAttribute('fill', '#E24B4A');
+    t.setAttribute('font-size', lb.size);
+    t.setAttribute('font-weight', '500');
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('dominant-baseline', 'middle');
+    t.textContent = lb.text;
+    t.setAttribute('id', 'lbl-' + i);
+    labelLayer.appendChild(t);
+  });
+
+  function project(sx, sy, sz, rx, rz) {
+    const cosZ = Math.cos(rz * Math.PI / 180);
+    const sinZ = Math.sin(rz * Math.PI / 180);
+    const x1 = sx * cosZ - sy * sinZ;
+    const y1 = sx * sinZ + sy * cosZ;
+    const z1 = sz;
+    const cosX = Math.cos(rx * Math.PI / 180);
+    const sinX = Math.sin(rx * Math.PI / 180);
+    const y2 = y1 * cosX - z1 * sinX;
+    return { sx: x1, sy: y2 };
+  }
+
+  function update() {
+    const rz = parseFloat(rotZ.value);
+    const rx = parseFloat(rotX.value);
+    scene.style.transform = 'rotateX(' + rx + 'deg) rotateZ(' + rz + 'deg)';
+    rotZVal.textContent = rz + '°';
+    rotXVal.textContent = rx + '°';
+
+    const rect = stage.getBoundingClientRect();
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+
+    labels.forEach(function(lb, i) {
+      const sx = lb.x - W/2;
+      const sy = lb.y - D/2;
+      const sz = lb.z;
+      const p = project(sx, sy, sz, rx, rz);
+      const px = cx + p.sx;
+      const py = cy + p.sy;
+      const el = document.getElementById('lbl-' + i);
+      el.setAttribute('x', px);
+      el.setAttribute('y', py);
+    });
+  }
+
+  window.setView = function(z, x) {
+    rotZ.value = z;
+    rotX.value = x;
+    update();
+  };
+
+  rotZ.addEventListener('input', update);
+  rotX.addEventListener('input', update);
+  window.addEventListener('resize', update);
+  setTimeout(update, 50);
+  update();
+})();
+</script>
+
+</body>
+</html>
